@@ -5,7 +5,7 @@ from contextlib import AsyncExitStack
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from anthropic import Anthropic
+import openai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,9 +16,12 @@ class MCPClient:
         # Initialize session and client objects
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
-        self.anthropic = Anthropic()
+        self.openai = openai.OpenAI()
 
     async def connect_to_server(self, server_script_path: str):
+        print('Connecting to server...')
+        print(server_script_path)
+        
         """Connect to an MCP server
 
         Args:
@@ -47,10 +50,16 @@ class MCPClient:
         # List available tools
         response = await self.session.list_tools()
         tools = response.tools
+        print('Tools:')
+        print(tools)
         print("\nConnected to server with tools:", [tool.name for tool in tools])
 
     async def process_query(self, query: str) -> str:
-        """Process a query using Claude and available tools"""
+        print('Processing query...')
+        print(query)
+
+
+        """Process a query using GPT-4 and available tools"""
         messages = [
             {
                 "role": "user",
@@ -60,60 +69,58 @@ class MCPClient:
 
         response = await self.session.list_tools()
         available_tools = [{
-            "name": tool.name,
-            "description": tool.description,
-            "input_schema": tool.inputSchema
+            "type": "function",
+            "function": {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.inputSchema
+            }
         } for tool in response.tools]
 
-        # Initial Claude API call
-        response = self.anthropic.messages.create(
-            model="claude-3-5-sonnet-20241022",
+        # Initial OpenAI API call
+        response = self.openai.chat.completions.create(
+            model="gpt-4o-mini",
             max_tokens=1000,
             messages=messages,
             tools=available_tools
         )
 
+        print('Response:')
+        print(response)
+
         # Process response and handle tool calls
         final_text = []
+        message = response.choices[0].message
 
-        assistant_message_content = []
-        for content in response.content:
-            if content.type == 'text':
-                final_text.append(content.text)
-                assistant_message_content.append(content)
-            elif content.type == 'tool_use':
-                tool_name = content.name
-                tool_args = content.input
+        if message.content:
+            final_text.append(message.content)
+
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = eval(tool_call.function.arguments)
 
                 # Execute tool call
                 result = await self.session.call_tool(tool_name, tool_args)
                 final_text.append(f"[Calling tool {tool_name} with args {tool_args}]")
 
-                assistant_message_content.append(content)
-                messages.append({
-                    "role": "assistant",
-                    "content": assistant_message_content
-                })
-                messages.append({
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": content.id,
-                            "content": result.content
-                        }
-                    ]
-                })
-
-                # Get next response from Claude
-                response = self.anthropic.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                # Get next response from GPT-4
+                response = self.openai.chat.completions.create(
+                    model="gpt-4o-mini",
                     max_tokens=1000,
-                    messages=messages,
+                    messages=[
+                        *messages,
+                        {"role": "assistant", "content": None, "tool_calls": [tool_call]},
+                        {"role": "tool", "tool_call_id": tool_call.id, "name": tool_name, "content": result.content}
+                    ],
                     tools=available_tools
                 )
 
-                final_text.append(response.content[0].text)
+                print('Response of tool call:')
+                print(response)
+
+                if response.choices[0].message.content:
+                    final_text.append(response.choices[0].message.content)
 
         return "\n".join(final_text)
 

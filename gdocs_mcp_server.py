@@ -12,6 +12,12 @@ async def create_google_doc(title: str, text: str) -> str:
     result = create_document(title, text)
     return format_response(result)
 
+
+@mcp.tool()
+async def read_google_doc(title: str, text: str) -> str:
+    return ''
+
+
 if __name__ == "__main__":
     # Initialize and run the server
     mcp.run(transport='stdio')

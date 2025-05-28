@@ -1,5 +1,5 @@
 # For all scripts
-anthropic
+openai>=1.0.0
 python-dotenv
 # For 02_tool_agent.py and 03_protocol_agent.py
 google-api-python-client
