@@ -1,4 +1,4 @@
-# %%
+# %% this is a simple LLM call
 import os
 
 import openai

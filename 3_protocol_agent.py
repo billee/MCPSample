@@ -54,8 +54,7 @@ class MCPClient:
         print(tools)
         print("\nConnected to server with tools:", [tool.name for tool in tools])
 
-    async def process_query(self, query: str) -> str:
-        print('Processing query...')
+    async def process_query(self):print('Processing query...')
         print(query)
 
 
